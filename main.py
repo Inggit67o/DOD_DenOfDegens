@@ -598,3 +598,78 @@ public final class DOD_DenOfDegens {
     public BigInteger getTotalAllocatedWei() { return totalAllocatedWei.get(); }
     public BigInteger getTotalPulledWei() { return totalPulledWei.get(); }
     public long getAllocationCount() { return allocationCount.get(); }
+    public long getPullCount() { return pullCount.get(); }
+    public long getPodCount() { return podCount.get(); }
+
+    private long currentBlock() {
+        return System.currentTimeMillis() / 1000L;
+    }
+
+    private void requireCurator(String sender) {
+        if (sender == null || !DODAddressValidator.normalize(sender).equalsIgnoreCase(DODAddressValidator.normalize(topCurator))) {
+            throw new DODException("DOD_NOT_CURATOR", "Caller is not curator");
+        }
+    }
+
+    private void requireNotPaused() {
+        if (latticePaused.get()) throw new DODException("DOD_LATTICE_PAUSED", "Lattice is paused");
+    }
+
+    private void requireAllocator(String sender) {
+        if (sender == null) throw new DODException("DOD_ZERO_ADDR", "Sender null");
+        if (!allocatorWhitelist.contains(DODAddressValidator.normalize(sender)) && !DODAddressValidator.normalize(sender).equalsIgnoreCase(DODAddressValidator.normalize(topCurator))) {
+            throw new DODException("DOD_ALLOCATOR_NOT_WHITELISTED", "Allocator not whitelisted");
+        }
+    }
+
+    public void spawnPod(String sender, String podIdHex, int riskTier, BigInteger minStakeWei, BigInteger maxStakeWei,
+                         int performanceFeeBps, int managementFeeBps) {
+        requireCurator(sender);
+        requireNotPaused();
+        synchronized (reentrancyLock) {
+            if (podIdHex == null || podIdHex.trim().isEmpty()) throw new DODException("DOD_ZERO_POD", "Pod id zero");
+            String id = DODEncodingUtils.padPodId(podIdHex);
+            if (pods.containsKey(id)) throw new DODException("DOD_POD_EXISTS", "Pod already exists");
+            if (podCount.get() >= MAX_PODS) throw new DODException("DOD_MAX_PODS", "Max pods reached");
+            if (riskTier < 0 || riskTier > MAX_RISK_TIER) throw new DODException("DOD_INVALID_RISK_TIER", "Risk tier 0-5");
+            if (performanceFeeBps > PERFORMANCE_FEE_BPS_CAP || managementFeeBps > MANAGEMENT_FEE_BPS_CAP) {
+                throw new DODException("DOD_INVALID_FEE_BPS", "Fee bps out of range");
+            }
+            DODPodInfo info = new DODPodInfo(id, topCurator, riskTier, BigInteger.ZERO,
+                minStakeWei != null ? minStakeWei : BigInteger.ZERO,
+                maxStakeWei != null ? maxStakeWei : BigInteger.ZERO,
+                performanceFeeBps, managementFeeBps, currentBlock(), false, true);
+            pods.put(id, info);
+            podIdOrder.add(id);
+            podCount.incrementAndGet();
+            long block = currentBlock();
+            for (DODEventListener L : listeners) L.onPodSpawned(new DODPodSpawned(id, topCurator, riskTier, minStakeWei, block));
+        }
+    }
+
+    public void allocate(String sender, String podIdHex, BigInteger amountWei) {
+        requireNotPaused();
+        requireAllocator(sender);
+        if (amountWei == null || amountWei.signum() <= 0) throw new DODException("DOD_ZERO_AMT", "Amount must be positive");
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        synchronized (reentrancyLock) {
+            DODPodInfo info = pods.get(id);
+            if (info == null || !info.isExists()) throw new DODException("DOD_POD_MISSING", "Pod not found");
+            if (info.isFrozen()) throw new DODException("DOD_POD_FROZEN", "Pod frozen");
+            if (info.getMinStakeWei().signum() > 0 && amountWei.compareTo(info.getMinStakeWei()) < 0) {
+                throw new DODException("DOD_BELOW_MIN_STAKE", "Below min stake");
+            }
+            BigInteger fee = feeCalculator.computeFee(amountWei);
+            BigInteger toPod = feeCalculator.amountAfterFee(amountWei);
+            if (info.getMaxStakeWei().signum() > 0) {
+                BigInteger newTotal = info.getTotalStakeWei().add(toPod);
+                if (newTotal.compareTo(info.getMaxStakeWei()) > 0) throw new DODException("DOD_ABOVE_MAX_STAKE", "Above max stake");
+            }
+            stakeInPod.computeIfAbsent(id, k -> new ConcurrentHashMap<>()).merge(sender, toPod, DODWeiMath::addSafe);
+            stakersInPod.computeIfAbsent(id, k -> Collections.synchronizedList(new ArrayList<>()));
+            if (!stakersInPod.get(id).contains(sender)) stakersInPod.get(id).add(sender);
+            totalStakeByAllocator.merge(sender, toPod, DODWeiMath::addSafe);
+            allocatorAllocationCount.merge(sender, 1L, Long::sum);
+            totalAllocatedWei.updateAndGet(v -> v.add(toPod));
+            allocationCount.incrementAndGet();
+            DODPodInfo updated = new DODPodInfo(id, info.getCurator(), info.getRiskTier(), info.getTotalStakeWei().add(toPod),
