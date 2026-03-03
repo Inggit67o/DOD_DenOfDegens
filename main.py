@@ -823,3 +823,78 @@ public final class DOD_DenOfDegens {
         return (currentBlock() - last) >= cooldownBlocks.get();
     }
 
+    public void addEventListener(DODEventListener listener) {
+        if (listener != null) listeners.add(listener);
+    }
+
+    public void removeEventListener(DODEventListener listener) {
+        listeners.remove(listener);
+    }
+
+    public boolean wouldAllocateSucceed(String podIdHex, String allocator, BigInteger amountWei) {
+        if (!podExists(podIdHex) || !isAllocatorWhitelisted(allocator)) return false;
+        DODPodInfo info = getPodInfo(podIdHex);
+        return DODEngine.wouldAllocateSucceed(true, info.isFrozen(), true, amountWei, info.getMinStakeWei(),
+            info.getMaxStakeWei(), info.getTotalStakeWei(), globalFeeBps.get(), null, info.getTotalStakeWei());
+    }
+
+    public boolean wouldPullSucceed(String podIdHex, String staker, BigInteger amountWei) {
+        if (!podExists(podIdHex)) return false;
+        DODPodInfo info = getPodInfo(podIdHex);
+        BigInteger staked = getStakeInPod(podIdHex, staker);
+        return DODEngine.wouldPullSucceed(true, info.isFrozen(), staked, amountWei, getLastPullBlock(podIdHex, staker), currentBlock(), cooldownBlocks.get());
+    }
+
+    public BigInteger quoteAllocationFee(BigInteger amountWei) {
+        return DODEngine.projectFee(amountWei, globalFeeBps.get());
+    }
+
+    public BigInteger quoteAllocationNet(BigInteger amountWei) {
+        return DODEngine.projectNetAfterFee(amountWei, globalFeeBps.get());
+    }
+
+    public static Map<String, Long> getGasEstimates() {
+        return DODGasEstimator.estimateAll();
+    }
+
+    public static String getRunbookSummary() {
+        return DODRunbook.runbookSummary();
+    }
+
+    public List<String> buildPodCsvReport() {
+        return DODReport.buildPodCsv(getAllPodInfos());
+    }
+
+    public String buildSummaryReport() {
+        return DODReport.buildSummaryText(getGlobalStats());
+    }
+
+    public void runAsCurator(Runnable action) {
+        String prev = Thread.currentThread().getName();
+        Thread.currentThread().setName(topCurator);
+        try {
+            action.run();
+        } finally {
+            Thread.currentThread().setName(prev);
+        }
+    }
+
+    public void setPodFrozen(String sender, String podIdHex, boolean frozen) {
+        requireCurator(sender);
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        DODPodInfo info = pods.get(id);
+        if (info == null) throw new DODException("DOD_POD_MISSING", "Pod not found");
+        DODPodInfo updated = new DODPodInfo(id, info.getCurator(), info.getRiskTier(), info.getTotalStakeWei(),
+            info.getMinStakeWei(), info.getMaxStakeWei(), info.getPerformanceFeeBps(), info.getManagementFeeBps(),
+            info.getCreatedAtBlock(), frozen, true);
+        pods.put(id, updated);
+    }
+
+    public void batchAllocate(String sender, List<String> podIdHexList, List<BigInteger> amountsWei) {
+        if (podIdHexList == null || amountsWei == null || podIdHexList.size() != amountsWei.size() || podIdHexList.isEmpty()) {
+            throw new DODException("DOD_INVALID_BATCH", "Batch length invalid");
+        }
+        if (podIdHexList.size() > MAX_BATCH_ALLOC) throw new DODException("DOD_INVALID_BATCH", "Batch too large");
+        requireNotPaused();
+        requireAllocator(sender);
+        synchronized (reentrancyLock) {
