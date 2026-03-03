@@ -1123,3 +1123,78 @@ final class DODSnapshot {
         this.totalPulledWei = totalPulledWei == null ? BigInteger.ZERO : totalPulledWei;
         this.podIds = podIds != null ? new ArrayList<>(podIds) : List.of();
     }
+}
+
+// -----------------------------------------------------------------------------
+// INTERACTIVE MENU (simple CLI loop)
+// -----------------------------------------------------------------------------
+
+final class DODInteractiveMenu {
+    static void run(Scanner scanner, DOD_DenOfDegens app) {
+        System.out.println("DOD_DenOfDegens interactive. Commands: spawn, allocate, pull, stats, pods, tier <0-5>, quit");
+        while (scanner.hasNextLine()) {
+            String line = scanner.nextLine().trim();
+            if (line.isEmpty()) continue;
+            String[] parts = line.split("\\s+");
+            String cmd = parts[0].toLowerCase();
+            try {
+                switch (cmd) {
+                    case "quit":
+                    case "exit":
+                        return;
+                    case "stats":
+                        System.out.println(app.buildSummaryReport());
+                        break;
+                    case "pods":
+                        System.out.println("Pods: " + app.getPodIds());
+                        break;
+                    case "tier":
+                        if (parts.length < 2) { System.out.println("Usage: tier <0-5>"); break; }
+                        int t = Integer.parseInt(parts[1]);
+                        System.out.println("Pods for tier " + t + ": " + app.getPodIdsForTier(t));
+                        break;
+                    case "spawn":
+                        app.runAsCurator(() -> {
+                            String podId = DODEngine.derivePodIdHex(app.getTopCurator(), "0x" + System.nanoTime(), System.currentTimeMillis());
+                            app.spawnPod(app.getTopCurator(), podId, 1, BigInteger.ZERO, null, 100, 20);
+                            System.out.println("Spawned " + podId);
+                        });
+                        break;
+                    case "allocate":
+                        if (parts.length < 4) { System.out.println("Usage: allocate <podId> <allocator> <amountWei>"); break; }
+                        app.allocate(parts[2], parts[1], new BigInteger(parts[3]));
+                        System.out.println("Allocated");
+                        break;
+                    case "pull":
+                        if (parts.length < 4) { System.out.println("Usage: pull <podId> <staker> <amountWei>"); break; }
+                        app.pullStake(parts[2], parts[1], new BigInteger(parts[3]));
+                        System.out.println("Pulled");
+                        break;
+                    default:
+                        System.out.println("Unknown command: " + cmd);
+                }
+            } catch (Exception e) {
+                System.err.println("Error: " + e.getMessage());
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// DEMO (one-shot demo flow)
+// -----------------------------------------------------------------------------
+
+final class DODDemo {
+    static void run() {
+        System.out.println("=== DOD_DenOfDegens Demo ===");
+        DOD_DenOfDegens app = new DOD_DenOfDegens();
+        app.runAsCurator(() -> {
+            for (int i = 0; i < 3; i++) {
+                String podId = DODEngine.derivePodIdHex(app.getTopCurator(), "0xseed" + i, i);
+                app.spawnPod(app.getTopCurator(), podId, i % (DOD_DenOfDegens.MAX_RISK_TIER + 1),
+                    BigInteger.valueOf(100_000_000_000_000L), BigInteger.valueOf(5).multiply(BigInteger.TEN.pow(18)), 150, 25);
+            }
+        });
+        app.setAllocatorWhitelist(app.getTopCurator(), app.getTopCurator(), true);
+        for (String podId : app.getPodIds()) {
+            app.allocate(app.getTopCurator(), podId, BigInteger.valueOf(1).multiply(BigInteger.TEN.pow(18)));
