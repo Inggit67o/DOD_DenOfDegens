@@ -1648,3 +1648,66 @@ final class DODDemoExtended {
             }
         });
         app.setAllocatorWhitelist(app.getTopCurator(), app.getTopCurator(), true);
+        for (String podId : app.getPodIds()) {
+            app.allocate(app.getTopCurator(), podId, BigInteger.valueOf(500_000).multiply(BigInteger.TEN.pow(12)));
+        }
+    }
+
+    static void runAllDemos() {
+        System.out.println("Demo 1: Chill only");
+        DOD_DenOfDegens app1 = new DOD_DenOfDegens();
+        runScenario1_ChillOnly(app1);
+        System.out.println(app1.buildSummaryReport());
+        System.out.println("Demo 2: Max degen");
+        DOD_DenOfDegens app2 = new DOD_DenOfDegens();
+        runScenario2_MaxDegen(app2);
+        System.out.println(app2.buildSummaryReport());
+        System.out.println("Tier stats: " + DODTierStatsCollector.collect(app2).size() + " tiers");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// USAGE SUMMARY (printed on --help or similar)
+// -----------------------------------------------------------------------------
+
+final class DODUsageSummary {
+    static List<String> getUsageLines() {
+        return List.of(
+            "DOD_DenOfDegens — MoonCapII fund-of-funds client/simulator.",
+            "How degen dare you go: risk tiers 0 (chill) to 5 (max).",
+            "",
+            "Main class: DOD_DenOfDegens",
+            "  - spawnPod(sender, podIdHex, riskTier, minStake, maxStake, perfBps, mgmtBps)",
+            "  - allocate(sender, podIdHex, amountWei)",
+            "  - pullStake(sender, podIdHex, amountWei)",
+            "  - setAllocatorWhitelist(sender, allocator, allowed)",
+            "  - getPodInfo(podIdHex), getGlobalStats(), getPodIds(), getStakeInPod(podId, allocator)",
+            "",
+            "Helpers: DODEngine, DODReport, DODRunbook, DODValidation, DODQuoteHelper, DODBatchHelper.",
+            "Demos: DODDemo.run() or DODDemoExtended.runAllDemos().",
+            "Interactive: DODInteractiveMenu.run(new Scanner(System.in), app)."
+        );
+    }
+
+    static void printUsage() {
+        for (String line : getUsageLines()) {
+            System.out.println(line);
+        }
+    }
+
+    static String getAnchorAddress() {
+        return DODEngine.getAnchor();
+    }
+
+    static String getContractTargetName() {
+        return DODRpcStub.getContractName();
+    }
+
+    static List<String> getRiskTiers() {
+        return DODReference.riskTierLabels();
+    }
+
+    static int getMaxRiskTier() {
+        return DOD_DenOfDegens.MAX_RISK_TIER;
+    }
+}
