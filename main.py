@@ -673,3 +673,78 @@ public final class DOD_DenOfDegens {
             totalAllocatedWei.updateAndGet(v -> v.add(toPod));
             allocationCount.incrementAndGet();
             DODPodInfo updated = new DODPodInfo(id, info.getCurator(), info.getRiskTier(), info.getTotalStakeWei().add(toPod),
+                info.getMinStakeWei(), info.getMaxStakeWei(), info.getPerformanceFeeBps(), info.getManagementFeeBps(),
+                info.getCreatedAtBlock(), info.isFrozen(), true);
+            pods.put(id, updated);
+            long block = currentBlock();
+            for (DODEventListener L : listeners) L.onDegenAllocated(new DODDegenAllocated(sender, id, toPod, block));
+        }
+    }
+
+    public void pullStake(String sender, String podIdHex, BigInteger amountWei) {
+        requireNotPaused();
+        if (amountWei == null || amountWei.signum() <= 0) throw new DODException("DOD_ZERO_AMT", "Amount must be positive");
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        synchronized (reentrancyLock) {
+            DODPodInfo info = pods.get(id);
+            if (info == null || !info.isExists()) throw new DODException("DOD_POD_MISSING", "Pod not found");
+            if (info.isFrozen()) throw new DODException("DOD_POD_FROZEN", "Pod frozen");
+            BigInteger staked = stakeInPod.getOrDefault(id, Collections.emptyMap()).getOrDefault(sender, BigInteger.ZERO);
+            if (staked.compareTo(amountWei) < 0) throw new DODException("DOD_INSUFFICIENT_STAKE", "Insufficient stake");
+            Long last = lastPullBlock.getOrDefault(id, Collections.emptyMap()).get(sender);
+            if (last != null && last != 0L && (currentBlock() - last) < cooldownBlocks.get()) {
+                throw new DODException("DOD_COOLDOWN_ACTIVE", "Cooldown active");
+            }
+            lastPullBlock.computeIfAbsent(id, k -> new ConcurrentHashMap<>()).put(sender, currentBlock());
+            BigInteger newStake = staked.subtract(amountWei);
+            stakeInPod.get(id).put(sender, newStake);
+            if (newStake.signum() == 0) stakeInPod.get(id).remove(sender);
+            totalStakeByAllocator.merge(sender, amountWei.negate(), (a, b) -> a.add(b).max(BigInteger.ZERO));
+            totalPulledWei.updateAndGet(v -> v.add(amountWei));
+            pullCount.incrementAndGet();
+            DODPodInfo updated = new DODPodInfo(id, info.getCurator(), info.getRiskTier(), info.getTotalStakeWei().subtract(amountWei),
+                info.getMinStakeWei(), info.getMaxStakeWei(), info.getPerformanceFeeBps(), info.getManagementFeeBps(),
+                info.getCreatedAtBlock(), info.isFrozen(), true);
+            pods.put(id, updated);
+            long block = currentBlock();
+            for (DODEventListener L : listeners) L.onStakePulled(new DODStakePulled(sender, id, amountWei, block));
+        }
+    }
+
+    public void setAllocatorWhitelist(String sender, String allocator, boolean allowed) {
+        requireCurator(sender);
+        if (allocator == null) throw new DODException("DOD_ZERO_ADDR", "Allocator address null");
+        if (allowed) allocatorWhitelist.add(DODAddressValidator.normalize(allocator));
+        else allocatorWhitelist.remove(DODAddressValidator.normalize(allocator));
+    }
+
+    public void setGlobalFeeBps(String sender, int feeBps) {
+        requireCurator(sender);
+        if (feeBps < 0 || feeBps > MANAGEMENT_FEE_BPS_CAP) throw new DODException("DOD_INVALID_FEE_BPS", "Fee bps out of range");
+        globalFeeBps.set(feeBps);
+    }
+
+    public void setCooldownBlocks(String sender, long blocks) {
+        requireCurator(sender);
+        if (blocks < 0 || blocks > 1_000_000) throw new DODException("DOD_BAD_INDEX", "Cooldown blocks out of range");
+        cooldownBlocks.set(blocks);
+    }
+
+    public void setLatticePaused(String sender, boolean paused) {
+        requireCurator(sender);
+        latticePaused.set(paused);
+    }
+
+    public boolean podExists(String podIdHex) {
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        return pods.containsKey(id) && pods.get(id).isExists();
+    }
+
+    public DODPodInfo getPodInfo(String podIdHex) {
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        DODPodInfo info = pods.get(id);
+        if (info == null) throw new DODException("DOD_POD_MISSING", "Pod not found");
+        return info;
+    }
+
+    public BigInteger getStakeInPod(String podIdHex, String allocator) {
