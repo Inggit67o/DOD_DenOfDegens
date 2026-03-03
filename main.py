@@ -1498,3 +1498,78 @@ final class DODVersionInfo {
     static final String BUILD_NAME = "DOD_DenOfDegens";
     static final String BUILD_VERSION = DOD_DenOfDegens.DOD_VERSION;
     static final String CONTRACT_TARGET = "MoonCapII";
+
+    static String getBuildName() { return BUILD_NAME; }
+    static String getBuildVersion() { return BUILD_VERSION; }
+    static String getContractTarget() { return CONTRACT_TARGET; }
+    static String fullVersion() {
+        return BUILD_NAME + " v" + BUILD_VERSION + " (target: " + CONTRACT_TARGET + ")";
+    }
+}
+
+// -----------------------------------------------------------------------------
+// EXTENDED REPORT (multi-section output)
+// -----------------------------------------------------------------------------
+
+final class DODExtendedReport {
+    static List<String> buildFullReport(DOD_DenOfDegens app) {
+        List<String> lines = new ArrayList<>();
+        lines.add("=== DOD_DenOfDegens Full Report ===");
+        lines.add(app.buildSummaryReport());
+        lines.add("");
+        lines.add("--- Pods ---");
+        lines.addAll(DODReport.buildPodCsv(app.getAllPodInfos()));
+        lines.add("");
+        lines.add("--- Tier Stats ---");
+        lines.addAll(DODReportBuilder.buildTierCsv(DODTierStatsCollector.collect(app)));
+        lines.add("");
+        lines.add("--- Export ---");
+        lines.add(app.exportSummary());
+        return lines;
+    }
+
+    static String buildOneLiner(DOD_DenOfDegens app) {
+        DODGlobalStats s = app.getGlobalStats();
+        return String.format("DOD pods=%d allocated=%s pulled=%s net=%s",
+            s.getPodCount(), s.getTotalAllocatedWei(), s.getTotalPulledWei(), s.getNetStakeWei());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// RUNBOOK EXTENDED (step descriptions and preconditions)
+// -----------------------------------------------------------------------------
+
+final class DODRunbookExtended {
+    static List<String> listAllSteps() {
+        return List.of(
+            "1. SpawnPod: curator spawns a pod with risk tier and fee params",
+            "2. WhitelistAllocator: curator adds allocator to whitelist",
+            "3. Allocate: whitelisted allocator sends wei to pod (fee deducted)",
+            "4. PullStake: allocator pulls stake after cooldown",
+            "5. SetGlobalFeeBps: curator sets global allocation fee",
+            "6. SetCooldownBlocks: curator sets pull cooldown in blocks",
+            "7. SetLatticePaused: curator pauses/unpauses all allocations",
+            "8. SetPodFrozen: curator freezes a single pod"
+        );
+    }
+
+    static String getStepPrecondition(int step) {
+        switch (step) {
+            case 1: return "Curator; lattice not paused; pod count under max";
+            case 2: return "Curator";
+            case 3: return "Allocator whitelisted; pod exists and not frozen; amount >= minStake";
+            case 4: return "Staker has stake; pod not frozen; cooldown elapsed";
+            case 5: return "Curator; feeBps <= 500";
+            case 6: return "Curator";
+            case 7: return "Curator";
+            case 8: return "Curator; pod exists";
+            default: return "Unknown";
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// GAS ESTIMATE EXTENDED (per-operation notes)
+// -----------------------------------------------------------------------------
+
+final class DODGasEstimateExtended {
