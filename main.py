@@ -898,3 +898,78 @@ public final class DOD_DenOfDegens {
         requireNotPaused();
         requireAllocator(sender);
         synchronized (reentrancyLock) {
+            for (int i = 0; i < podIdHexList.size(); i++) {
+                allocate(sender, podIdHexList.get(i), amountsWei.get(i));
+            }
+        }
+    }
+
+    public List<String> getPodIdsForTier(int riskTier) {
+        if (riskTier < 0 || riskTier > MAX_RISK_TIER) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String id : getPodIds()) {
+            DODPodInfo info = pods.get(id);
+            if (info != null && info.getRiskTier() == riskTier) out.add(id);
+        }
+        return out;
+    }
+
+    public BigInteger getStakerTotalAcrossPods(String staker, List<String> podIdHexList) {
+        BigInteger sum = BigInteger.ZERO;
+        for (String id : podIdHexList) {
+            sum = sum.add(getStakeInPod(id, staker));
+        }
+        return sum;
+    }
+
+    public List<BigInteger> getStakerPortfolio(String staker, List<String> podIdHexList) {
+        List<BigInteger> out = new ArrayList<>(podIdHexList.size());
+        for (String id : podIdHexList) {
+            out.add(getStakeInPod(id, staker));
+        }
+        return out;
+    }
+
+    public long blocksUntilCanPull(String podIdHex, String staker) {
+        long last = getLastPullBlock(podIdHex, staker);
+        if (last == 0) return 0;
+        long elapsed = currentBlock() - last;
+        if (elapsed >= cooldownBlocks.get()) return 0;
+        return cooldownBlocks.get() - elapsed;
+    }
+
+    // -------------------------------------------------------------------------
+    // INTEGRITY CHECK
+    // -------------------------------------------------------------------------
+
+    public String runIntegrityCheck() {
+        BigInteger sumStake = BigInteger.ZERO;
+        for (String id : getPodIds()) {
+            DODPodInfo info = pods.get(id);
+            if (info != null) sumStake = sumStake.add(info.getTotalStakeWei());
+        }
+        BigInteger net = totalAllocatedWei.get().subtract(totalPulledWei.get()).max(BigInteger.ZERO);
+        if (sumStake.compareTo(net) > 0) return "DOD_INTEGRITY: pod total stake exceeds net allocated";
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // STATE ENCODER / DECODER (for audit)
+    // -------------------------------------------------------------------------
+
+    public String exportSummary() {
+        DODGlobalStats s = getGlobalStats();
+        return String.format("DOD|%s|pods=%d|allocated=%s|pulled=%s|net=%s|feeBps=%d|cooldown=%d",
+            DOD_VERSION, s.getPodCount(), s.getTotalAllocatedWei(), s.getTotalPulledWei(), s.getNetStakeWei(),
+            s.getGlobalFeeBps(), s.getCooldownBlocks());
+    }
+
+    // -------------------------------------------------------------------------
+    // MAIN (CLI entry)
+    // -------------------------------------------------------------------------
+
+    public static void main(String[] args) {
+        System.out.println("DOD_DenOfDegens v" + DOD_VERSION + " — How degen dare you go.");
+        System.out.println(DODRunbook.runbookSummary());
+        DOD_DenOfDegens app = new DOD_DenOfDegens();
+        app.runAsCurator(() -> {
