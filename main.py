@@ -523,3 +523,78 @@ final class DODReport {
 
     static String buildSummaryText(DODGlobalStats stats) {
         return String.format("DOD_DenOfDegens | pods=%d feeBps=%d cooldown=%d allocated=%s pulled=%s net=%s",
+            stats.getPodCount(), stats.getGlobalFeeBps(), stats.getCooldownBlocks(),
+            stats.getTotalAllocatedWei(), stats.getTotalPulledWei(), stats.getNetStakeWei());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// MAIN: DEN OF DEGENS (MoonCapII simulator / client state)
+// -----------------------------------------------------------------------------
+
+/**
+ * DOD_DenOfDegens — Client and simulator for MoonCapII fund-of-funds.
+ * Top degens run pods; allocators route capital; risk tiers 0–5 set how degen you go.
+ * All state in one process for simulation; can be wired to EVM RPC for live use.
+ */
+public final class DOD_DenOfDegens {
+
+    public static final String DOD_VERSION = "1.0.0";
+    public static final int MAX_RISK_TIER = 5;
+    public static final int MAX_PODS = 200_000;
+    public static final int MAX_PODS_PER_CURATOR = 50;
+    public static final int MAX_BATCH_ALLOC = 32;
+    public static final int DENOM_BPS = 10_000;
+    public static final int PERFORMANCE_FEE_BPS_CAP = 2_000;
+    public static final int MANAGEMENT_FEE_BPS_CAP = 500;
+
+    private final String topCurator;
+    private final String feeCollector;
+    private final String emergencyGuard;
+    private final String treasury;
+    private final long deployBlock;
+
+    private final Map<String, DODPodInfo> pods = new ConcurrentHashMap<>();
+    private final List<String> podIdOrder = Collections.synchronizedList(new ArrayList<>());
+    private final AtomicLong podCount = new AtomicLong(0);
+    private final Map<String, Map<String, BigInteger>> stakeInPod = new ConcurrentHashMap<>();
+    private final Map<String, List<String>> stakersInPod = new ConcurrentHashMap<>();
+    private final Map<String, BigInteger> totalStakeByAllocator = new ConcurrentHashMap<>();
+    private final Map<String, Long> allocatorAllocationCount = new ConcurrentHashMap<>();
+    private final Set<String> allocatorWhitelist = ConcurrentHashMap.newKeySet();
+    private final AtomicBoolean latticePaused = new AtomicBoolean(false);
+    private final AtomicInteger globalFeeBps = new AtomicInteger(25);
+    private final AtomicLong cooldownBlocks = new AtomicLong(12);
+    private final AtomicReference<BigInteger> totalTreasuryWei = new AtomicReference<>(BigInteger.ZERO);
+    private final AtomicReference<BigInteger> totalAllocatedWei = new AtomicReference<>(BigInteger.ZERO);
+    private final AtomicReference<BigInteger> totalPulledWei = new AtomicReference<>(BigInteger.ZERO);
+    private final AtomicLong allocationCount = new AtomicLong(0);
+    private final AtomicLong pullCount = new AtomicLong(0);
+    private final Map<String, Map<String, Long>> lastPullBlock = new ConcurrentHashMap<>();
+    private final List<DODEventListener> listeners = Collections.synchronizedList(new ArrayList<>());
+    private final Object reentrancyLock = new Object();
+    private final DODFeeCalculator feeCalculator = new DODFeeCalculator(25);
+
+    public DOD_DenOfDegens() {
+        this.topCurator = "0x8B7C9d2E4f6A1b3c5D7e9F0a2B4c6d8E0f1A3B5";
+        this.feeCollector = "0x3F1A5b9c2D4e6f8A0b2C4d6E8f0a1B3c5D7e9F1";
+        this.emergencyGuard = "0xE4D6f8A0B2c4e6F8a1B3c5d7E9f0A2b4C6d8E0f2";
+        this.treasury = "0xA1b3C5d7E9f0A2b4C6d8E0f1A3b5C7d9E1f3A5b7";
+        this.deployBlock = System.currentTimeMillis() / 1000L;
+        if (!DODAddressValidator.isValid(topCurator)) {
+            throw new DODException("DOD_ZERO_ADDR", "Curator address invalid");
+        }
+    }
+
+    public String getTopCurator() { return topCurator; }
+    public String getFeeCollector() { return feeCollector; }
+    public String getEmergencyGuard() { return emergencyGuard; }
+    public String getTreasury() { return treasury; }
+    public long getDeployBlock() { return deployBlock; }
+    public int getGlobalFeeBps() { return globalFeeBps.get(); }
+    public long getCooldownBlocks() { return cooldownBlocks.get(); }
+    public boolean isLatticePaused() { return latticePaused.get(); }
+    public BigInteger getTotalTreasuryWei() { return totalTreasuryWei.get(); }
+    public BigInteger getTotalAllocatedWei() { return totalAllocatedWei.get(); }
+    public BigInteger getTotalPulledWei() { return totalPulledWei.get(); }
+    public long getAllocationCount() { return allocationCount.get(); }
