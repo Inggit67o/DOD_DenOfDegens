@@ -148,3 +148,78 @@ final class DODAddressValidator {
 
 final class DODFeeCalculator {
     private static final int BPS_MAX = 10_000;
+    private final int feeBps;
+
+    DODFeeCalculator(int feeBps) {
+        this.feeBps = Math.max(0, Math.min(feeBps, BPS_MAX));
+    }
+
+    BigInteger computeFee(BigInteger amountWei) {
+        if (amountWei == null || amountWei.signum() <= 0 || feeBps == 0) return BigInteger.ZERO;
+        return amountWei.multiply(BigInteger.valueOf(feeBps)).divide(BigInteger.valueOf(BPS_MAX));
+    }
+
+    BigInteger amountAfterFee(BigInteger amountWei) {
+        return DODWeiMath.subSafe(amountWei == null ? BigInteger.ZERO : amountWei, computeFee(amountWei));
+    }
+
+    int getFeeBps() { return feeBps; }
+}
+
+// -----------------------------------------------------------------------------
+// POD INFO (immutable view)
+// -----------------------------------------------------------------------------
+
+final class DODPodInfo {
+    private final String podIdHex;
+    private final String curator;
+    private final int riskTier;
+    private final BigInteger totalStakeWei;
+    private final BigInteger minStakeWei;
+    private final BigInteger maxStakeWei;
+    private final int performanceFeeBps;
+    private final int managementFeeBps;
+    private final long createdAtBlock;
+    private final boolean frozen;
+    private final boolean exists;
+
+    DODPodInfo(String podIdHex, String curator, int riskTier, BigInteger totalStakeWei,
+               BigInteger minStakeWei, BigInteger maxStakeWei, int performanceFeeBps, int managementFeeBps,
+               long createdAtBlock, boolean frozen, boolean exists) {
+        this.podIdHex = podIdHex;
+        this.curator = curator;
+        this.riskTier = riskTier;
+        this.totalStakeWei = totalStakeWei == null ? BigInteger.ZERO : totalStakeWei;
+        this.minStakeWei = minStakeWei == null ? BigInteger.ZERO : minStakeWei;
+        this.maxStakeWei = maxStakeWei == null ? BigInteger.ZERO : maxStakeWei;
+        this.performanceFeeBps = performanceFeeBps;
+        this.managementFeeBps = managementFeeBps;
+        this.createdAtBlock = createdAtBlock;
+        this.frozen = frozen;
+        this.exists = exists;
+    }
+
+    String getPodIdHex() { return podIdHex; }
+    String getCurator() { return curator; }
+    int getRiskTier() { return riskTier; }
+    BigInteger getTotalStakeWei() { return totalStakeWei; }
+    BigInteger getMinStakeWei() { return minStakeWei; }
+    BigInteger getMaxStakeWei() { return maxStakeWei; }
+    int getPerformanceFeeBps() { return performanceFeeBps; }
+    int getManagementFeeBps() { return managementFeeBps; }
+    long getCreatedAtBlock() { return createdAtBlock; }
+    boolean isFrozen() { return frozen; }
+    boolean isExists() { return exists; }
+}
+
+// -----------------------------------------------------------------------------
+// GLOBAL STATS
+// -----------------------------------------------------------------------------
+
+final class DODGlobalStats {
+    private final long podCount;
+    private final long deployBlock;
+    private final int globalFeeBps;
+    private final long cooldownBlocks;
+    private final BigInteger totalTreasuryWei;
+    private final BigInteger totalAllocatedWei;
