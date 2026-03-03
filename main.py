@@ -1198,3 +1198,78 @@ final class DODDemo {
         app.setAllocatorWhitelist(app.getTopCurator(), app.getTopCurator(), true);
         for (String podId : app.getPodIds()) {
             app.allocate(app.getTopCurator(), podId, BigInteger.valueOf(1).multiply(BigInteger.TEN.pow(18)));
+        }
+        System.out.println(app.buildSummaryReport());
+        System.out.println("Tier stats: " + DODTierStatsCollector.collect(app).stream().map(DODTierStats::getLabel).collect(Collectors.joining(", ")));
+        System.out.println("Export: " + app.exportSummary());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// REFERENCE (constants and error code list)
+// -----------------------------------------------------------------------------
+
+final class DODReference {
+    static List<String> allErrorCodes() {
+        return DODErrorCodes.allCodes();
+    }
+
+    static String describeError(String code) {
+        return DODErrorCodes.describe(code);
+    }
+
+    static List<String> riskTierLabels() {
+        return Arrays.asList(DODRiskTierLabels.LABELS);
+    }
+
+    static String version() {
+        return DOD_DenOfDegens.DOD_VERSION;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ALLOCATOR STATS (per-allocator view)
+// -----------------------------------------------------------------------------
+
+final class DODAllocatorStats {
+    private final String allocator;
+    private final BigInteger totalStakeWei;
+    private final long allocationCount;
+    private final List<String> podIdsWithStake;
+
+    DODAllocatorStats(String allocator, BigInteger totalStakeWei, long allocationCount, List<String> podIdsWithStake) {
+        this.allocator = allocator;
+        this.totalStakeWei = totalStakeWei == null ? BigInteger.ZERO : totalStakeWei;
+        this.allocationCount = allocationCount;
+        this.podIdsWithStake = podIdsWithStake != null ? new ArrayList<>(podIdsWithStake) : List.of();
+    }
+
+    String getAllocator() { return allocator; }
+    BigInteger getTotalStakeWei() { return totalStakeWei; }
+    long getAllocationCount() { return allocationCount; }
+    List<String> getPodIdsWithStake() { return podIdsWithStake; }
+}
+
+// -----------------------------------------------------------------------------
+// PORTFOLIO VIEW (staker summary across pods)
+// -----------------------------------------------------------------------------
+
+final class DODPortfolioView {
+    private final String staker;
+    private final List<String> podIds;
+    private final List<BigInteger> stakes;
+    private final BigInteger totalStakeWei;
+
+    DODPortfolioView(String staker, List<String> podIds, List<BigInteger> stakes, BigInteger totalStakeWei) {
+        this.staker = staker;
+        this.podIds = podIds != null ? new ArrayList<>(podIds) : List.of();
+        this.stakes = stakes != null ? new ArrayList<>(stakes) : List.of();
+        this.totalStakeWei = totalStakeWei == null ? BigInteger.ZERO : totalStakeWei;
+    }
+
+    String getStaker() { return staker; }
+    List<String> getPodIds() { return podIds; }
+    List<BigInteger> getStakes() { return stakes; }
+    BigInteger getTotalStakeWei() { return totalStakeWei; }
+}
+
