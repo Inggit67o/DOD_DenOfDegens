@@ -748,3 +748,78 @@ public final class DOD_DenOfDegens {
     }
 
     public BigInteger getStakeInPod(String podIdHex, String allocator) {
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        return stakeInPod.getOrDefault(id, Collections.emptyMap()).getOrDefault(allocator, BigInteger.ZERO);
+    }
+
+    public boolean isAllocatorWhitelisted(String address) {
+        if (address == null) return false;
+        return allocatorWhitelist.contains(DODAddressValidator.normalize(address)) || DODAddressValidator.normalize(address).equalsIgnoreCase(DODAddressValidator.normalize(topCurator));
+    }
+
+    public DODGlobalStats getGlobalStats() {
+        return new DODGlobalStats(podCount.get(), deployBlock, globalFeeBps.get(), cooldownBlocks.get(),
+            totalTreasuryWei.get(), totalAllocatedWei.get(), totalPulledWei.get(), allocationCount.get(), pullCount.get());
+    }
+
+    public List<String> getPodIds() {
+        synchronized (podIdOrder) {
+            return new ArrayList<>(podIdOrder);
+        }
+    }
+
+    public List<DODPodInfo> getAllPodInfos() {
+        List<DODPodInfo> out = new ArrayList<>();
+        for (String id : getPodIds()) {
+            if (pods.containsKey(id)) out.add(pods.get(id));
+        }
+        return out;
+    }
+
+    public BigInteger getTotalStakeByAllocator(String allocator) {
+        return totalStakeByAllocator.getOrDefault(allocator, BigInteger.ZERO);
+    }
+
+    public long getLastPullBlock(String podIdHex, String staker) {
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        return lastPullBlock.getOrDefault(id, Collections.emptyMap()).getOrDefault(staker, 0L);
+    }
+
+    public List<String> getStakersInPod(String podIdHex) {
+        String id = DODEncodingUtils.padPodId(podIdHex);
+        List<String> list = stakersInPod.get(id);
+        return list != null ? new ArrayList<>(list) : List.of();
+    }
+
+    public List<String> getPodIdsInRange(int fromIndex, int toIndex) {
+        synchronized (podIdOrder) {
+            int size = podIdOrder.size();
+            if (fromIndex < 0 || toIndex >= size || fromIndex > toIndex) return List.of();
+            List<String> out = new ArrayList<>(toIndex - fromIndex + 1);
+            for (int i = fromIndex; i <= toIndex; i++) out.add(podIdOrder.get(i));
+            return out;
+        }
+    }
+
+    public Set<String> getAllAllocators() {
+        Set<String> out = new HashSet<>(allocatorWhitelist);
+        out.add(DODAddressValidator.normalize(topCurator));
+        return out;
+    }
+
+    public DODPortfolioView getPortfolioView(String staker) {
+        List<String> ids = getPodIds();
+        List<BigInteger> stakes = getStakerPortfolio(staker, ids);
+        BigInteger total = getStakerTotalAcrossPods(staker, ids);
+        return new DODPortfolioView(staker, ids, stakes, total);
+    }
+
+    public boolean canPull(String podIdHex, String staker) {
+        if (getStakeInPod(podIdHex, staker).signum() <= 0) return false;
+        DODPodInfo info = pods.get(DODEncodingUtils.padPodId(podIdHex));
+        if (info == null || info.isFrozen()) return false;
+        long last = getLastPullBlock(podIdHex, staker);
+        if (last == 0) return true;
+        return (currentBlock() - last) >= cooldownBlocks.get();
+    }
+
