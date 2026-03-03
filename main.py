@@ -1573,3 +1573,78 @@ final class DODRunbookExtended {
 // -----------------------------------------------------------------------------
 
 final class DODGasEstimateExtended {
+    static Map<String, String> getGasNotes() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("spawnPod", "~180k + storage slots for pod state");
+        m.put("allocate", "~80k + 2 storage slots per allocator-pod");
+        m.put("pullStake", "~65k + transfer + 2 storage updates");
+        m.put("batchAllocate", "Base ~120k + per-pod allocation cost");
+        m.put("setGlobalFeeBps", "~45k single storage write");
+        m.put("setCooldownBlocks", "~40k single storage write");
+        return m;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CONSTANTS REFERENCE (all caps and limits)
+// -----------------------------------------------------------------------------
+
+final class DODConstantsRef {
+    static int maxRiskTier() { return DOD_DenOfDegens.MAX_RISK_TIER; }
+    static int maxPods() { return DOD_DenOfDegens.MAX_PODS; }
+    static int maxPodsPerCurator() { return DOD_DenOfDegens.MAX_PODS_PER_CURATOR; }
+    static int maxBatchAlloc() { return DOD_DenOfDegens.MAX_BATCH_ALLOC; }
+    static int denomBps() { return DOD_DenOfDegens.DENOM_BPS; }
+    static int performanceFeeBpsCap() { return DOD_DenOfDegens.PERFORMANCE_FEE_BPS_CAP; }
+    static int managementFeeBpsCap() { return DOD_DenOfDegens.MANAGEMENT_FEE_BPS_CAP; }
+}
+
+// -----------------------------------------------------------------------------
+// MAIN CLASS EXTRA VIEWS (exposed via main app)
+// -----------------------------------------------------------------------------
+
+final class DODAppViews {
+    static long getAllocatorCount(DOD_DenOfDegens app) {
+        return app.getAllAllocators().size();
+    }
+
+    static int getStakerCountForPod(DOD_DenOfDegens app, String podIdHex) {
+        return app.getStakersInPod(podIdHex).size();
+    }
+
+    static boolean hasAnyStakeInPod(DOD_DenOfDegens app, String podIdHex, String staker) {
+        return app.getStakeInPod(podIdHex, staker).signum() > 0;
+    }
+
+    static String formatWei(BigInteger wei) {
+        if (wei == null) return "0";
+        return wei.toString();
+    }
+
+    static String formatPodSummary(DODPodInfo info) {
+        if (info == null) return "null";
+        return String.format("pod %s tier=%d total=%s frozen=%s", info.getPodIdHex(), info.getRiskTier(), info.getTotalStakeWei(), info.isFrozen());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// DEMO EXTENDED (multi-scenario)
+// -----------------------------------------------------------------------------
+
+final class DODDemoExtended {
+    static void runScenario1_ChillOnly(DOD_DenOfDegens app) {
+        app.runAsCurator(() -> {
+            String podId = DODEngine.derivePodIdHex(app.getTopCurator(), "0xchill", 1);
+            app.spawnPod(app.getTopCurator(), podId, 0, DODConfig.getDefaultMinStakeWei(), DODConfig.getDefaultMaxStakeWei(), 100, 20);
+        });
+        app.allocate(app.getTopCurator(), app.getPodIds().get(0), BigInteger.ONE.multiply(BigInteger.TEN.pow(18)));
+    }
+
+    static void runScenario2_MaxDegen(DOD_DenOfDegens app) {
+        app.runAsCurator(() -> {
+            for (int t = 0; t <= DOD_DenOfDegens.MAX_RISK_TIER; t++) {
+                String podId = DODEngine.derivePodIdHex(app.getTopCurator(), "0xmax" + t, t);
+                app.spawnPod(app.getTopCurator(), podId, t, BigInteger.ZERO, null, DOD_DenOfDegens.PERFORMANCE_FEE_BPS_CAP - 100, DOD_DenOfDegens.MANAGEMENT_FEE_BPS_CAP - 50);
+            }
+        });
+        app.setAllocatorWhitelist(app.getTopCurator(), app.getTopCurator(), true);
