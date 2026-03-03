@@ -298,3 +298,78 @@ final class DODDegenAllocated {
 
 final class DODStakePulled {
     private final String staker;
+    private final String podIdHex;
+    private final BigInteger amountWei;
+    private final long atBlock;
+    DODStakePulled(String staker, String podIdHex, BigInteger amountWei, long atBlock) {
+        this.staker = staker;
+        this.podIdHex = podIdHex;
+        this.amountWei = amountWei == null ? BigInteger.ZERO : amountWei;
+        this.atBlock = atBlock;
+    }
+    String getStaker() { return staker; }
+    String getPodIdHex() { return podIdHex; }
+    BigInteger getAmountWei() { return amountWei; }
+    long getAtBlock() { return atBlock; }
+}
+
+// -----------------------------------------------------------------------------
+// EVENT LISTENER INTERFACE
+// -----------------------------------------------------------------------------
+
+interface DODEventListener {
+    void onPodSpawned(DODPodSpawned e);
+    void onDegenAllocated(DODDegenAllocated e);
+    void onStakePulled(DODStakePulled e);
+}
+
+// -----------------------------------------------------------------------------
+// RISK TIER LABELS (how degen dare you go)
+// -----------------------------------------------------------------------------
+
+final class DODRiskTierLabels {
+    static final String[] LABELS = { "chill", "low", "med", "high", "degen", "max" };
+    static final int MAX_TIER = 5;
+
+    static String labelFor(int tier) {
+        if (tier < 0 || tier > MAX_TIER) return "invalid";
+        return LABELS[tier];
+    }
+
+    static boolean isValid(int tier) {
+        return tier >= 0 && tier <= MAX_TIER;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ENGINE (simulation helpers, no mutable state)
+// -----------------------------------------------------------------------------
+
+final class DODEngine {
+    static final String ANCHOR = "0x7e9F1a3B5c7D9e1F3a5B7c9d1E3f5A7b9C1d3E5f7";
+
+    static String getAnchor() { return ANCHOR; }
+
+    static boolean wouldAllocateSucceed(boolean podExists, boolean podFrozen, boolean allocatorWhitelisted,
+                                        BigInteger amountWei, BigInteger minStake, BigInteger maxStake,
+                                        BigInteger currentTotalStake, int globalFeeBps,
+                                        BigInteger tierCapWei, BigInteger tierTotalStakeWei) {
+        if (!podExists || podFrozen || !allocatorWhitelisted) return false;
+        if (amountWei == null || amountWei.signum() <= 0) return false;
+        BigInteger net = amountWei.subtract(amountWei.multiply(BigInteger.valueOf(globalFeeBps)).divide(BigInteger.valueOf(10_000)));
+        if (minStake != null && minStake.signum() > 0 && amountWei.compareTo(minStake) < 0) return false;
+        if (maxStake != null && maxStake.signum() > 0 && currentTotalStake.add(net).compareTo(maxStake) > 0) return false;
+        if (tierCapWei != null && tierCapWei.signum() > 0 && tierTotalStakeWei.add(net).compareTo(tierCapWei) > 0) return false;
+        return true;
+    }
+
+    static boolean wouldPullSucceed(boolean podExists, boolean podFrozen, BigInteger stakerBalance,
+                                    BigInteger pullAmount, long lastPullBlock, long currentBlock, long cooldownBlocks) {
+        if (!podExists || podFrozen) return false;
+        if (stakerBalance == null || stakerBalance.compareTo(pullAmount) < 0) return false;
+        if (lastPullBlock == 0) return true;
+        return (currentBlock - lastPullBlock) >= cooldownBlocks;
+    }
+
+    static BigInteger projectFee(BigInteger amountWei, int feeBps) {
+        if (amountWei == null || amountWei.signum() <= 0 || feeBps <= 0) return BigInteger.ZERO;
