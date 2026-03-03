@@ -73,3 +73,78 @@ final class DODErrorCodes {
             case DOD_INVALID_RISK_TIER: return "Risk tier must be 0-5";
             case DOD_XFER_FAIL: return "Transfer failed";
             case DOD_REENTRANT: return "Reentrant call";
+            case DOD_INVALID_FEE_BPS: return "Fee bps out of range";
+            case DOD_INVALID_BATCH: return "Batch length invalid";
+            case DOD_ALLOCATOR_NOT_WHITELISTED: return "Allocator not whitelisted";
+            case DOD_MAX_PODS: return "Max pods reached";
+            case DOD_MAX_PODS_PER_CURATOR: return "Max pods per curator reached";
+            case DOD_COOLDOWN_ACTIVE: return "Cooldown active for pull";
+            case DOD_BAD_INDEX: return "Index out of range";
+            case DOD_INTEGRITY: return "Integrity check failed";
+            default: return "Unknown: " + code;
+        }
+    }
+
+    static List<String> allCodes() {
+        return List.of(DOD_ZERO_POD, DOD_ZERO_ADDR, DOD_ZERO_AMT, DOD_NOT_CURATOR, DOD_NOT_ALLOCATOR,
+            DOD_NOT_GUARD, DOD_POD_MISSING, DOD_POD_EXISTS, DOD_POD_FROZEN, DOD_LATTICE_PAUSED,
+            DOD_INSUFFICIENT_STAKE, DOD_BELOW_MIN_STAKE, DOD_ABOVE_MAX_STAKE, DOD_INVALID_RISK_TIER,
+            DOD_XFER_FAIL, DOD_REENTRANT, DOD_INVALID_FEE_BPS, DOD_INVALID_BATCH, DOD_ALLOCATOR_NOT_WHITELISTED,
+            DOD_MAX_PODS, DOD_MAX_PODS_PER_CURATOR, DOD_COOLDOWN_ACTIVE, DOD_BAD_INDEX, DOD_INTEGRITY);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// WEI SAFE MATH (EVM-style u256)
+// -----------------------------------------------------------------------------
+
+final class DODWeiMath {
+    private static final BigInteger MAX_U256 = BigInteger.ONE.shiftLeft(256).subtract(BigInteger.ONE);
+
+    static BigInteger clampU256(BigInteger value) {
+        if (value == null || value.signum() < 0) return BigInteger.ZERO;
+        if (value.compareTo(MAX_U256) > 0) return MAX_U256;
+        return value;
+    }
+
+    static BigInteger addSafe(BigInteger a, BigInteger b) {
+        BigInteger sum = (a == null ? BigInteger.ZERO : a).add(b == null ? BigInteger.ZERO : b);
+        return clampU256(sum);
+    }
+
+    static BigInteger subSafe(BigInteger a, BigInteger b) {
+        BigInteger aa = a == null ? BigInteger.ZERO : a;
+        BigInteger bb = b == null ? BigInteger.ZERO : b;
+        if (bb.compareTo(aa) > 0) return BigInteger.ZERO;
+        return aa.subtract(bb);
+    }
+
+    static boolean isZeroOrNegative(BigInteger v) {
+        return v == null || v.signum() <= 0;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ADDRESS VALIDATION (EVM 40-hex)
+// -----------------------------------------------------------------------------
+
+final class DODAddressValidator {
+    private static final Pattern EVM_ADDRESS = Pattern.compile("^0x[a-fA-F0-9]{40}$");
+
+    static boolean isValid(String address) {
+        return address != null && EVM_ADDRESS.matcher(address.trim()).matches();
+    }
+
+    static String normalize(String address) {
+        if (address == null) return null;
+        String s = address.trim();
+        return s.toLowerCase().startsWith("0x") ? s : "0x" + s;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// FEE CALCULATOR (basis points)
+// -----------------------------------------------------------------------------
+
+final class DODFeeCalculator {
+    private static final int BPS_MAX = 10_000;
