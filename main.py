@@ -1273,3 +1273,78 @@ final class DODPortfolioView {
     BigInteger getTotalStakeWei() { return totalStakeWei; }
 }
 
+// -----------------------------------------------------------------------------
+// REPORT BUILDER (extended CSV and text)
+// -----------------------------------------------------------------------------
+
+final class DODReportBuilder {
+    static List<String> buildTierCsv(List<DODTierStats> tierStats) {
+        List<String> lines = new ArrayList<>();
+        lines.add(DODReport.toCsvLine("riskTier", "label", "totalStakeWei", "podCount"));
+        for (DODTierStats t : tierStats) {
+            lines.add(DODReport.toCsvLine(String.valueOf(t.getRiskTier()), t.getLabel(), t.getTotalStakeWei().toString(), String.valueOf(t.getPodCount())));
+        }
+        return lines;
+    }
+
+    static List<String> buildAllocatorCsv(DOD_DenOfDegens app) {
+        List<String> lines = new ArrayList<>();
+        lines.add(DODReport.toCsvLine("allocator", "totalStakeWei", "allocationCount"));
+        Set<String> allocators = new HashSet<>();
+        allocators.add(app.getTopCurator());
+        for (String id : app.getPodIds()) {
+            DODPodInfo info = app.getPodInfo(id);
+            if (info != null) allocators.add(info.getCurator());
+        }
+        for (String a : allocators) {
+            lines.add(DODReport.toCsvLine(a, app.getTotalStakeByAllocator(a).toString(), String.valueOf(app.getAllocationCount())));
+        }
+        return lines;
+    }
+
+    static String buildTierSummaryText(List<DODTierStats> tierStats) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Risk tiers: ");
+        for (DODTierStats t : tierStats) {
+            sb.append(t.getLabel()).append("=").append(t.getTotalStakeWei()).append(" (").append(t.getPodCount()).append(" pods) ");
+        }
+        return sb.toString().trim();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// VALIDATION HELPERS (input checks before submit)
+// -----------------------------------------------------------------------------
+
+final class DODValidation {
+    static boolean isValidPodIdHex(String podIdHex) {
+        if (podIdHex == null || podIdHex.trim().isEmpty()) return false;
+        String s = podIdHex.trim();
+        if (s.startsWith("0x")) s = s.substring(2);
+        return s.length() <= 64 && s.matches("[a-fA-F0-9]*");
+    }
+
+    static boolean isValidAmountWei(BigInteger amountWei) {
+        return amountWei != null && amountWei.signum() > 0;
+    }
+
+    static boolean isValidRiskTier(int tier) {
+        return tier >= 0 && tier <= DOD_DenOfDegens.MAX_RISK_TIER;
+    }
+
+    static List<String> validateSpawnPod(String podIdHex, int riskTier, BigInteger minStakeWei, BigInteger maxStakeWei, int perfBps, int mgmtBps) {
+        List<String> errors = new ArrayList<>();
+        if (!isValidPodIdHex(podIdHex)) errors.add("Invalid pod id");
+        if (!isValidRiskTier(riskTier)) errors.add("Risk tier must be 0-5");
+        if (minStakeWei != null && minStakeWei.signum() < 0) errors.add("Min stake must be non-negative");
+        if (maxStakeWei != null && maxStakeWei.signum() < 0) errors.add("Max stake must be non-negative");
+        if (maxStakeWei != null && minStakeWei != null && maxStakeWei.compareTo(minStakeWei) < 0) errors.add("Max stake must be >= min stake");
+        if (perfBps < 0 || perfBps > DOD_DenOfDegens.PERFORMANCE_FEE_BPS_CAP) errors.add("Performance fee bps out of range");
+        if (mgmtBps < 0 || mgmtBps > DOD_DenOfDegens.MANAGEMENT_FEE_BPS_CAP) errors.add("Management fee bps out of range");
+        return errors;
+    }
+
+    static List<String> validateAllocate(String podIdHex, String allocator, BigInteger amountWei) {
+        List<String> errors = new ArrayList<>();
+        if (!isValidPodIdHex(podIdHex)) errors.add("Invalid pod id");
+        if (allocator == null || !DODAddressValidator.isValid(allocator)) errors.add("Invalid allocator address");
