@@ -973,3 +973,78 @@ public final class DOD_DenOfDegens {
         System.out.println(DODRunbook.runbookSummary());
         DOD_DenOfDegens app = new DOD_DenOfDegens();
         app.runAsCurator(() -> {
+            String podId = DODEngine.derivePodIdHex(app.getTopCurator(), "0xdead", 1);
+            app.spawnPod(app.getTopCurator(), podId, 2, BigInteger.valueOf(1_000_000_000_000_000L), BigInteger.valueOf(10).multiply(BigInteger.TEN.pow(18)), 200, 30);
+            System.out.println("Spawned pod: " + podId);
+        });
+        app.setAllocatorWhitelist(app.getTopCurator(), "0x8B7C9d2E4f6A1b3c5D7e9F0a2B4c6d8E0f1A3B5", true);
+        app.allocate("0x8B7C9d2E4f6A1b3c5D7e9F0a2B4c6d8E0f1A3B5", app.getPodIds().get(0), BigInteger.valueOf(2).multiply(BigInteger.TEN.pow(18)));
+        System.out.println(app.buildSummaryReport());
+        System.out.println("Pods: " + app.getPodIds().size());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// INTEGRITY CHECK (standalone)
+// -----------------------------------------------------------------------------
+
+final class DODIntegrityCheck {
+    static String runAllChecks(DOD_DenOfDegens app) {
+        return app.runIntegrityCheck();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// STATE ENCODER (export for off-chain)
+// -----------------------------------------------------------------------------
+
+final class DODStateEncoder {
+    static String encodeSummary(DOD_DenOfDegens app) {
+        return app.exportSummary();
+    }
+
+    static List<String> encodePodLines(DOD_DenOfDegens app) {
+        List<String> out = new ArrayList<>();
+        for (DODPodInfo p : app.getAllPodInfos()) {
+            out.add(String.format("pod|%s|%s|%d|%s|%s|%s|%s", p.getPodIdHex(), p.getCurator(), p.getRiskTier(),
+                p.getTotalStakeWei(), p.getMinStakeWei(), p.getMaxStakeWei(), p.isFrozen()));
+        }
+        return out;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// STATE DECODER (parse summary line)
+// -----------------------------------------------------------------------------
+
+final class DODStateDecoder {
+    static Map<String, String> decodeSummary(String line) {
+        Map<String, String> m = new HashMap<>();
+        if (line == null || !line.startsWith("DOD|")) return m;
+        String[] parts = line.split("\\|");
+        for (int i = 1; i < parts.length; i++) {
+            String p = parts[i];
+            int eq = p.indexOf('=');
+            if (eq > 0) m.put(p.substring(0, eq), p.substring(eq + 1));
+        }
+        return m;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// PRECONDITIONS (runbook helpers)
+// -----------------------------------------------------------------------------
+
+final class DODPreconditions {
+    static List<String> forSpawnPod(DOD_DenOfDegens app) {
+        List<String> out = new ArrayList<>();
+        if (app.isLatticePaused()) out.add("Lattice must not be paused");
+        if (app.getPodCount() >= DOD_DenOfDegens.MAX_PODS) out.add("Max pods reached");
+        return out;
+    }
+
+    static List<String> forAllocate(DOD_DenOfDegens app, String podIdHex, String allocator, BigInteger amountWei) {
+        List<String> out = new ArrayList<>();
+        if (app.isLatticePaused()) out.add("Lattice must not be paused");
+        if (!app.podExists(podIdHex)) out.add("Pod must exist");
+        if (!app.isAllocatorWhitelisted(allocator)) out.add("Allocator must be whitelisted");
