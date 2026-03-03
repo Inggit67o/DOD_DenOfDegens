@@ -1423,3 +1423,78 @@ final class DODConfig {
     static final long DEFAULT_COOLDOWN_BLOCKS = 12;
     static final int DEFAULT_PERF_FEE_BPS = 200;
     static final int DEFAULT_MGMT_FEE_BPS = 30;
+    static final BigInteger DEFAULT_MIN_STAKE_WEI = BigInteger.valueOf(1_000_000_000_000_000L);
+    static final BigInteger DEFAULT_MAX_STAKE_WEI = BigInteger.valueOf(10).multiply(BigInteger.TEN.pow(18));
+
+    static int getDefaultGlobalFeeBps() { return DEFAULT_GLOBAL_FEE_BPS; }
+    static long getDefaultCooldownBlocks() { return DEFAULT_COOLDOWN_BLOCKS; }
+    static int getDefaultPerfFeeBps() { return DEFAULT_PERF_FEE_BPS; }
+    static int getDefaultMgmtFeeBps() { return DEFAULT_MGMT_FEE_BPS; }
+    static BigInteger getDefaultMinStakeWei() { return DEFAULT_MIN_STAKE_WEI; }
+    static BigInteger getDefaultMaxStakeWei() { return DEFAULT_MAX_STAKE_WEI; }
+}
+
+// -----------------------------------------------------------------------------
+// LOGGER (simple event log for audit trail)
+// -----------------------------------------------------------------------------
+
+final class DODEventLog {
+    private final List<String> entries = Collections.synchronizedList(new ArrayList<>());
+    private static final int MAX_ENTRIES = 10_000;
+
+    void append(String action, String actor, String detail) {
+        String line = String.format("%d|%s|%s|%s", System.currentTimeMillis(), action, actor != null ? actor : "", detail != null ? detail : "");
+        entries.add(line);
+        if (entries.size() > MAX_ENTRIES) {
+            entries.remove(0);
+        }
+    }
+
+    List<String> getRecent(int n) {
+        synchronized (entries) {
+            int size = entries.size();
+            if (n >= size) return new ArrayList<>(entries);
+            return new ArrayList<>(entries.subList(size - n, size));
+        }
+    }
+
+    void clear() {
+        entries.clear();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// RPC STUB (placeholder for EVM RPC binding; no implementation)
+// -----------------------------------------------------------------------------
+
+final class DODRpcStub {
+    static final String CONTRACT_NAME = "MoonCapII";
+    static final String ABI_REF = "MoonCapII.sol";
+
+    static String getContractName() { return CONTRACT_NAME; }
+    static String getAbiRef() { return ABI_REF; }
+
+    /** Call allocate(bytes32 podId) with value = amountWei. Requires RPC URL and signer. */
+    static String encodeAllocateCall(String podIdHex, BigInteger amountWei) {
+        return "allocate(" + podIdHex + ") value=" + (amountWei != null ? amountWei : BigInteger.ZERO);
+    }
+
+    /** Call pullStake(bytes32 podId, uint256 amountWei). */
+    static String encodePullStakeCall(String podIdHex, BigInteger amountWei) {
+        return "pullStake(" + podIdHex + "," + (amountWei != null ? amountWei : BigInteger.ZERO) + ")";
+    }
+
+    /** Call spawnPod(...). Curator only. */
+    static String encodeSpawnPodCall(String podIdHex, int riskTier, BigInteger minStake, BigInteger maxStake, int perfBps, int mgmtBps) {
+        return "spawnPod(" + podIdHex + "," + riskTier + "," + minStake + "," + maxStake + "," + perfBps + "," + mgmtBps + ")";
+    }
+}
+
+// -----------------------------------------------------------------------------
+// VERSION INFO (build-time constants)
+// -----------------------------------------------------------------------------
+
+final class DODVersionInfo {
+    static final String BUILD_NAME = "DOD_DenOfDegens";
+    static final String BUILD_VERSION = DOD_DenOfDegens.DOD_VERSION;
+    static final String CONTRACT_TARGET = "MoonCapII";
