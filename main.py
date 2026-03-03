@@ -223,3 +223,78 @@ final class DODGlobalStats {
     private final long cooldownBlocks;
     private final BigInteger totalTreasuryWei;
     private final BigInteger totalAllocatedWei;
+    private final BigInteger totalPulledWei;
+    private final long allocationCount;
+    private final long pullCount;
+
+    DODGlobalStats(long podCount, long deployBlock, int globalFeeBps, long cooldownBlocks,
+                   BigInteger totalTreasuryWei, BigInteger totalAllocatedWei, BigInteger totalPulledWei,
+                   long allocationCount, long pullCount) {
+        this.podCount = podCount;
+        this.deployBlock = deployBlock;
+        this.globalFeeBps = globalFeeBps;
+        this.cooldownBlocks = cooldownBlocks;
+        this.totalTreasuryWei = totalTreasuryWei == null ? BigInteger.ZERO : totalTreasuryWei;
+        this.totalAllocatedWei = totalAllocatedWei == null ? BigInteger.ZERO : totalAllocatedWei;
+        this.totalPulledWei = totalPulledWei == null ? BigInteger.ZERO : totalPulledWei;
+        this.allocationCount = allocationCount;
+        this.pullCount = pullCount;
+    }
+
+    long getPodCount() { return podCount; }
+    long getDeployBlock() { return deployBlock; }
+    int getGlobalFeeBps() { return globalFeeBps; }
+    long getCooldownBlocks() { return cooldownBlocks; }
+    BigInteger getTotalTreasuryWei() { return totalTreasuryWei; }
+    BigInteger getTotalAllocatedWei() { return totalAllocatedWei; }
+    BigInteger getTotalPulledWei() { return totalPulledWei; }
+    long getAllocationCount() { return allocationCount; }
+    long getPullCount() { return pullCount; }
+    BigInteger getNetStakeWei() {
+        return totalAllocatedWei.subtract(totalPulledWei).max(BigInteger.ZERO);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// EVENT DTOs (for listeners)
+// -----------------------------------------------------------------------------
+
+final class DODPodSpawned {
+    private final String podIdHex;
+    private final String curator;
+    private final int riskTier;
+    private final BigInteger minStakeWei;
+    private final long atBlock;
+    DODPodSpawned(String podIdHex, String curator, int riskTier, BigInteger minStakeWei, long atBlock) {
+        this.podIdHex = podIdHex;
+        this.curator = curator;
+        this.riskTier = riskTier;
+        this.minStakeWei = minStakeWei == null ? BigInteger.ZERO : minStakeWei;
+        this.atBlock = atBlock;
+    }
+    String getPodIdHex() { return podIdHex; }
+    String getCurator() { return curator; }
+    int getRiskTier() { return riskTier; }
+    BigInteger getMinStakeWei() { return minStakeWei; }
+    long getAtBlock() { return atBlock; }
+}
+
+final class DODDegenAllocated {
+    private final String allocator;
+    private final String podIdHex;
+    private final BigInteger amountWei;
+    private final long atBlock;
+    DODDegenAllocated(String allocator, String podIdHex, BigInteger amountWei, long atBlock) {
+        this.allocator = allocator;
+        this.podIdHex = podIdHex;
+        this.amountWei = amountWei == null ? BigInteger.ZERO : amountWei;
+        this.atBlock = atBlock;
+    }
+    String getAllocator() { return allocator; }
+    String getPodIdHex() { return podIdHex; }
+    BigInteger getAmountWei() { return amountWei; }
+    long getAtBlock() { return atBlock; }
+}
+
+final class DODStakePulled {
+    private final String staker;
