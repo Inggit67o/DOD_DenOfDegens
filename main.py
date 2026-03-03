@@ -373,3 +373,78 @@ final class DODEngine {
 
     static BigInteger projectFee(BigInteger amountWei, int feeBps) {
         if (amountWei == null || amountWei.signum() <= 0 || feeBps <= 0) return BigInteger.ZERO;
+        int bps = Math.max(0, Math.min(feeBps, 10_000));
+        return amountWei.multiply(BigInteger.valueOf(bps)).divide(BigInteger.valueOf(10_000));
+    }
+
+    static BigInteger projectNetAfterFee(BigInteger amountWei, int feeBps) {
+        return DODWeiMath.subSafe(amountWei == null ? BigInteger.ZERO : amountWei, projectFee(amountWei, feeBps));
+    }
+
+    static String derivePodIdHex(String curator, String seedHex, long salt) {
+        if (curator == null) curator = "0x0000000000000000000000000000000000000000";
+        if (seedHex == null) seedHex = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        String payload = curator + seedHex + salt;
+        return "0x" + Integer.toHexString(payload.hashCode() & 0x7FFF_FFFF) + Long.toHexString(salt);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ENCODING UTILS (hex / bytes)
+// -----------------------------------------------------------------------------
+
+final class DODEncodingUtils {
+    private static final String HEX = "0123456789abcdef";
+
+    static String toHex(byte[] bytes) {
+        if (bytes == null) return "";
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(HEX.charAt((b >> 4) & 0x0f)).append(HEX.charAt(b & 0x0f));
+        }
+        return "0x" + sb.toString();
+    }
+
+    static String padPodId(String podId) {
+        if (podId == null) return "0x" + "0".repeat(64);
+        String s = podId.trim().toLowerCase();
+        if (s.startsWith("0x")) s = s.substring(2);
+        if (s.length() >= 64) return "0x" + s.substring(s.length() - 64);
+        return "0x" + "0".repeat(64 - s.length()) + s;
+    }
+
+    static String padAddressTo40(String address) {
+        if (address == null) return "0x0000000000000000000000000000000000000000";
+        String s = address.trim().toLowerCase();
+        if (s.startsWith("0x")) s = s.substring(2);
+        if (s.length() >= 40) return "0x" + s.substring(s.length() - 40);
+        return "0x" + "0".repeat(40 - s.length()) + s;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// GAS ESTIMATOR (off-chain)
+// -----------------------------------------------------------------------------
+
+final class DODGasEstimator {
+    static final long BASE_SPAWN_POD = 180_000L;
+    static final long BASE_ALLOCATE = 80_000L;
+    static final long BASE_PULL_STAKE = 65_000L;
+    static final long BASE_BATCH_ALLOCATE = 120_000L;
+    static final long BASE_SET_FEE_BPS = 45_000L;
+    static final long BASE_SET_COOLDOWN = 40_000L;
+    static final long PER_POD_SLOT = 25_000L;
+    static final long PER_ALLOCATOR_SLOT = 20_000L;
+
+    static long estimateSpawnPod() {
+        return BASE_SPAWN_POD + PER_POD_SLOT * 8;
+    }
+
+    static long estimateAllocate() {
+        return BASE_ALLOCATE + PER_POD_SLOT * 2;
+    }
+
+    static long estimatePullStake() {
+        return BASE_PULL_STAKE + PER_POD_SLOT * 2;
+    }
+
