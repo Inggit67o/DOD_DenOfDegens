@@ -1048,3 +1048,78 @@ final class DODPreconditions {
         if (app.isLatticePaused()) out.add("Lattice must not be paused");
         if (!app.podExists(podIdHex)) out.add("Pod must exist");
         if (!app.isAllocatorWhitelisted(allocator)) out.add("Allocator must be whitelisted");
+        if (amountWei == null || amountWei.signum() <= 0) out.add("Amount must be positive");
+        if (app.podExists(podIdHex)) {
+            DODPodInfo info = app.getPodInfo(podIdHex);
+            if (info.isFrozen()) out.add("Pod must not be frozen");
+            if (info.getMinStakeWei().signum() > 0 && amountWei.compareTo(info.getMinStakeWei()) < 0) {
+                out.add("Amount below minimum stake");
+            }
+        }
+        return out;
+    }
+
+    static List<String> forPullStake(DOD_DenOfDegens app, String podIdHex, String staker, BigInteger amountWei) {
+        List<String> out = new ArrayList<>();
+        if (app.isLatticePaused()) out.add("Lattice must not be paused");
+        if (!app.podExists(podIdHex)) out.add("Pod must exist");
+        if (app.podExists(podIdHex) && app.getPodInfo(podIdHex).isFrozen()) out.add("Pod must not be frozen");
+        if (app.getStakeInPod(podIdHex, staker).compareTo(amountWei) < 0) out.add("Insufficient stake");
+        if (app.blocksUntilCanPull(podIdHex, staker) > 0) out.add("Cooldown still active");
+        return out;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TIER STATS (aggregate by risk tier)
+// -----------------------------------------------------------------------------
+
+final class DODTierStats {
+    private final int riskTier;
+    private final BigInteger totalStakeWei;
+    private final long podCount;
+
+    DODTierStats(int riskTier, BigInteger totalStakeWei, long podCount) {
+        this.riskTier = riskTier;
+        this.totalStakeWei = totalStakeWei == null ? BigInteger.ZERO : totalStakeWei;
+        this.podCount = podCount;
+    }
+
+    int getRiskTier() { return riskTier; }
+    BigInteger getTotalStakeWei() { return totalStakeWei; }
+    long getPodCount() { return podCount; }
+    String getLabel() { return DODRiskTierLabels.labelFor(riskTier); }
+}
+
+final class DODTierStatsCollector {
+    static List<DODTierStats> collect(DOD_DenOfDegens app) {
+        List<DODTierStats> out = new ArrayList<>();
+        for (int t = 0; t <= DOD_DenOfDegens.MAX_RISK_TIER; t++) {
+            List<String> ids = app.getPodIdsForTier(t);
+            BigInteger sum = BigInteger.ZERO;
+            for (String id : ids) {
+                DODPodInfo info = app.getPodInfo(id);
+                if (info != null) sum = sum.add(info.getTotalStakeWei());
+            }
+            out.add(new DODTierStats(t, sum, ids.size()));
+        }
+        return out;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SNAPSHOT (for recovery / audit)
+// -----------------------------------------------------------------------------
+
+final class DODSnapshot {
+    public final long podCount;
+    public final BigInteger totalAllocatedWei;
+    public final BigInteger totalPulledWei;
+    public final List<String> podIds;
+
+    DODSnapshot(long podCount, BigInteger totalAllocatedWei, BigInteger totalPulledWei, List<String> podIds) {
+        this.podCount = podCount;
+        this.totalAllocatedWei = totalAllocatedWei == null ? BigInteger.ZERO : totalAllocatedWei;
+        this.totalPulledWei = totalPulledWei == null ? BigInteger.ZERO : totalPulledWei;
+        this.podIds = podIds != null ? new ArrayList<>(podIds) : List.of();
+    }
