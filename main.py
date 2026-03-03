@@ -448,3 +448,78 @@ final class DODGasEstimator {
         return BASE_PULL_STAKE + PER_POD_SLOT * 2;
     }
 
+    static long estimateBatchAllocate(int podCount) {
+        return BASE_BATCH_ALLOCATE + (long) podCount * (PER_POD_SLOT + PER_ALLOCATOR_SLOT);
+    }
+
+    static Map<String, Long> estimateAll() {
+        Map<String, Long> m = new HashMap<>();
+        m.put("spawnPod", estimateSpawnPod());
+        m.put("allocate", estimateAllocate());
+        m.put("pullStake", estimatePullStake());
+        m.put("batchAllocate_4", estimateBatchAllocate(4));
+        m.put("setGlobalFeeBps", BASE_SET_FEE_BPS);
+        m.put("setCooldownBlocks", BASE_SET_COOLDOWN);
+        return m;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// RUNBOOK (procedures)
+// -----------------------------------------------------------------------------
+
+final class DODRunbook {
+    static final int STEP_SPAWN_POD = 1;
+    static final int STEP_WHITELIST_ALLOCATOR = 2;
+    static final int STEP_ALLOCATE = 3;
+    static final int STEP_PULL_STAKE = 4;
+    static final int STEP_SET_FEE = 5;
+    static final int STEP_PAUSE_LATTICE = 6;
+
+    static String describeStep(int step) {
+        switch (step) {
+            case STEP_SPAWN_POD: return "Spawn pod (curator only)";
+            case STEP_WHITELIST_ALLOCATOR: return "Whitelist allocator (curator only)";
+            case STEP_ALLOCATE: return "Allocate wei to pod (whitelisted allocator or curator)";
+            case STEP_PULL_STAKE: return "Pull stake from pod (after cooldown)";
+            case STEP_SET_FEE: return "Set global fee bps (curator only)";
+            case STEP_PAUSE_LATTICE: return "Pause/unpause lattice (curator only)";
+            default: return "Unknown step";
+        }
+    }
+
+    static String runbookSummary() {
+        return "DOD Runbook: 1=SpawnPod 2=WhitelistAllocator 3=Allocate 4=PullStake 5=SetFee 6=PauseLattice.";
+    }
+}
+
+// -----------------------------------------------------------------------------
+// REPORT (CSV / text)
+// -----------------------------------------------------------------------------
+
+final class DODReport {
+    static String toCsvLine(String... cells) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cells.length; i++) {
+            if (i > 0) sb.append(",");
+            String c = cells[i] != null ? cells[i] : "";
+            if (c.contains(",") || c.contains("\"") || c.contains("\n")) {
+                sb.append("\"").append(c.replace("\"", "\"\"")).append("\"");
+            } else sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    static List<String> buildPodCsv(List<DODPodInfo> pods) {
+        List<String> lines = new ArrayList<>();
+        lines.add(toCsvLine("podIdHex", "curator", "riskTier", "totalStakeWei", "minStakeWei", "maxStakeWei", "frozen", "exists"));
+        for (DODPodInfo p : pods) {
+            lines.add(toCsvLine(p.getPodIdHex(), p.getCurator(), String.valueOf(p.getRiskTier()),
+                p.getTotalStakeWei().toString(), p.getMinStakeWei().toString(), p.getMaxStakeWei().toString(),
+                String.valueOf(p.isFrozen()), String.valueOf(p.isExists())));
+        }
+        return lines;
+    }
+
+    static String buildSummaryText(DODGlobalStats stats) {
+        return String.format("DOD_DenOfDegens | pods=%d feeBps=%d cooldown=%d allocated=%s pulled=%s net=%s",
