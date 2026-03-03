@@ -1348,3 +1348,78 @@ final class DODValidation {
         List<String> errors = new ArrayList<>();
         if (!isValidPodIdHex(podIdHex)) errors.add("Invalid pod id");
         if (allocator == null || !DODAddressValidator.isValid(allocator)) errors.add("Invalid allocator address");
+        if (!isValidAmountWei(amountWei)) errors.add("Amount must be positive");
+        return errors;
+    }
+
+    static List<String> validatePullStake(String podIdHex, String staker, BigInteger amountWei) {
+        List<String> errors = new ArrayList<>();
+        if (!isValidPodIdHex(podIdHex)) errors.add("Invalid pod id");
+        if (staker == null || !DODAddressValidator.isValid(staker)) errors.add("Invalid staker address");
+        if (!isValidAmountWei(amountWei)) errors.add("Amount must be positive");
+        return errors;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// QUOTE HELPERS (fee and net before submit)
+// -----------------------------------------------------------------------------
+
+final class DODQuoteHelper {
+    static BigInteger quoteFee(BigInteger amountWei, int feeBps) {
+        return DODEngine.projectFee(amountWei, feeBps);
+    }
+
+    static BigInteger quoteNet(BigInteger amountWei, int feeBps) {
+        return DODEngine.projectNetAfterFee(amountWei, feeBps);
+    }
+
+    static String quoteSummary(BigInteger amountWei, int feeBps) {
+        BigInteger fee = quoteFee(amountWei, feeBps);
+        BigInteger net = quoteNet(amountWei, feeBps);
+        return String.format("Amount=%s fee=%s netToPod=%s", amountWei, fee, net);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// BATCH HELPERS (multi-pod operations)
+// -----------------------------------------------------------------------------
+
+final class DODBatchHelper {
+    static List<String> getPodIdsInRange(DOD_DenOfDegens app, int fromIndex, int toIndex) {
+        List<String> all = app.getPodIds();
+        if (fromIndex < 0 || toIndex >= all.size() || fromIndex > toIndex) return List.of();
+        List<String> out = new ArrayList<>();
+        for (int i = fromIndex; i <= toIndex; i++) {
+            out.add(all.get(i));
+        }
+        return out;
+    }
+
+    static List<DODPodInfo> getPodInfosInRange(DOD_DenOfDegens app, int fromIndex, int toIndex) {
+        List<String> ids = getPodIdsInRange(app, fromIndex, toIndex);
+        List<DODPodInfo> out = new ArrayList<>();
+        for (String id : ids) {
+            out.add(app.getPodInfo(id));
+        }
+        return out;
+    }
+
+    static BigInteger totalStakeAcrossPods(DOD_DenOfDegens app, List<String> podIds) {
+        BigInteger sum = BigInteger.ZERO;
+        for (String id : podIds) {
+            sum = sum.add(app.getPodInfo(id).getTotalStakeWei());
+        }
+        return sum;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CONFIG (defaults and limits)
+// -----------------------------------------------------------------------------
+
+final class DODConfig {
+    static final int DEFAULT_GLOBAL_FEE_BPS = 25;
+    static final long DEFAULT_COOLDOWN_BLOCKS = 12;
+    static final int DEFAULT_PERF_FEE_BPS = 200;
+    static final int DEFAULT_MGMT_FEE_BPS = 30;
